@@ -216,7 +216,7 @@
   function renderApp() {
     const y = window.scrollY;
     const body = tab === 'coming' ? viewComing() : tab === 'chip' ? viewChip() : tab === 'org' ? viewOrg() : viewJobs();
-    app.innerHTML = header() + `<main class="wrap">${body}</main>` + nav();
+    app.innerHTML = header() + nav() + `<main class="wrap">${body}</main>`;
     window.scrollTo(0, y);
   }
 
