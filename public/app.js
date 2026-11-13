@@ -345,9 +345,55 @@
   }
 
   // ----- Organise -----
+  // A ready-made status message for the WhatsApp group (counts only, no names of people who are short).
+  function updateText(withCode) {
+    const e = S.event;
+    const nightTotals = (n) => {
+      const ps = S.people.filter((x) => x.nights.includes(n));
+      return [ps.reduce((a, x) => a + x.adults, 0), ps.reduce((a, x) => a + x.kids, 0)];
+    };
+    const [fa, fk] = nightTotals('Fri'), [sa, sk] = nightTotals('Sat');
+    const open = S.tasks.filter((t) => !t.pending && t.claims.length < t.slots)
+      .sort((x, y) => y.points - x.points || x.title.localeCompare(y.title));
+    const statuses = S.people.filter((p) => !p.host).map((p) => tally(p).status);
+    const set = statuses.filter((x) => x === 'ok').length;
+    const url = location.origin + (withCode ? '/?code=' + encodeURIComponent(code) : '');
+    const lines = [`🔥 *${e.name}* update`, `📅 ${e.dates}${e.location ? ' · ' + e.location : ''}`, ''];
+    const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    const night = (a, k) => pl(a, 'adult') + (k ? ` + ${pl(k, 'kid')}` : '');
+    lines.push(`🏕️ *Coming:* ${pl(S.people.length, 'RSVP')} · Fri ${night(fa, fk)} · Sat ${night(sa, sk)}`);
+    if (open.length) {
+      lines.push('', `🪓 *Jobs still open (${open.length}):*`);
+      open.slice(0, 5).forEach((t) => {
+        const left = t.slots - t.claims.length;
+        lines.push(`• ${t.title} (${t.points} pts${left > 1 ? `, ${left} spots` : ''})`);
+      });
+      if (open.length > 5) lines.push(`…plus ${open.length - 5} more`);
+    } else lines.push('', '🪓 Every job is claimed. Legends.');
+    if (statuses.length) lines.push('', `✅ ${set} of ${statuses.length} sign-ups are all set${set < statuses.length ? `. ${statuses.length - set} still need points or a chip-in.` : '. Many hands, light work.'}`);
+    lines.push('', `👉 Claim a job or chip in: ${url}`);
+    return lines.join('\n');
+  }
+
+  function viewUpdate() {
+    return `<h2>Post an update</h2>
+      <details class="box" id="upd">
+        <summary>📣 Write a WhatsApp update</summary>
+        <div class="stack" style="margin-top:12px">
+          <textarea id="upd-text" rows="12" aria-label="Update message">${esc(updateText(true))}</textarea>
+          <label class="check small"><input type="checkbox" id="upd-code" checked> Include the event code in the link</label>
+          <div class="grid2">
+            <button class="btn primary" data-act="updSend">Open in WhatsApp</button>
+            <button class="btn" data-act="updCopy">Copy text</button>
+          </div>
+          <p class="small muted">Edit it as you like, then pick the Farm Fest group in WhatsApp. It shows counts only, never who is short.</p>
+        </div>
+      </details>`;
+  }
+
   function viewOrg() {
     const r = S.roles;
-    let out = '';
+    let out = viewUpdate();
     if (!r.admin || !r.treasurer) {
       out += `<h2>Unlock</h2><div class="card stack">
         ${!r.admin ? `<form class="row" data-form="adminLogin"><input name="c" type="password" placeholder="Organiser code" autocomplete="off" aria-label="Organiser code"><button class="btn primary" type="submit">Unlock</button></form>` : ''}
@@ -508,12 +554,19 @@
     if (a === 'removePerson') { if (confirmTwice(b, 'Tap again to remove')) act({ action: 'removePerson', personId: b.dataset.id }, 'Removed'); return; }
     if (a === 'newEvent') { if (confirmTwice(b, 'Tap again: this clears all RSVPs')) act({ action: 'newEvent' }, 'New event started'); return; }
     if (a === 'csv') { downloadCsv(); return; }
+    if (a === 'updSend') { window.open('https://wa.me/?text=' + encodeURIComponent(app.querySelector('#upd-text').value), '_blank', 'noopener'); return; }
+    if (a === 'updCopy') {
+      const v = app.querySelector('#upd-text').value;
+      (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('Copied'), () => { app.querySelector('#upd-text').select(); toast('Select all and copy'); });
+      return;
+    }
     if (a === 'lock') { adminCode = ''; treasurerCode = ''; ls.set('admin', null); ls.set('treasurer', null); load(); return; }
   });
 
   app.addEventListener('change', (ev) => {
     const b = ev.target;
     if (b.dataset.act === 'notDone') act({ action: 'setNotDone', taskId: b.dataset.tid, personId: b.dataset.pid, notDone: !b.checked }, b.checked ? 'Marked done' : 'Points removed');
+    if (b.id === 'upd-code') app.querySelector('#upd-text').value = updateText(b.checked);
     if (b.dataset.act === 'host') act({ action: 'updatePerson', personId: b.dataset.id, person: { host: b.checked } }, 'Updated');
   });
 
