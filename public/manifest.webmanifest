@@ -1,0 +1,9 @@
+{
+  "name": "Farm Fest",
+  "short_name": "Farm Fest",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#2f5d3a",
+  "icons": []
+}
