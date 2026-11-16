@@ -66,3 +66,9 @@ npm run dev     # http://localhost:8888, codes FF27 / ORG / CASH
 - Everything is stored as one JSON record in Netlify Blobs. Saves are conditional and retried, so two people claiming at once won't overwrite each other.
 - The event code stops casual visitors, but it is shared, so don't treat it as strong security. Payment details can only be edited with the treasurer code, and anyone with the event code can read them.
 - "Start a new event" clears RSVPs, claims and payments. It keeps the job list and the payment details.
+
+## Event days and the run sheet
+
+- **Dates:** each event has a start and end date (date pickers in Organise, up to 7 days). The dates line is written from them, e.g. "Fri 2 to Sun 4 Apr 2027".
+- **Day-specific jobs:** a "During" job can be tied to a day and a time of day (Breakfast, Lunch, Dinner and so on). The Jobs tab then groups During jobs by day, for example all the Friday dinner jobs together. Jobs shared by all events can't have a day.
+- **Run sheet:** the Event tab (formerly Coming) shows a run sheet for each day of the event at the top. Everyone with the event code can read it; only organisers can edit it. Write one line per item, e.g. `6pm Dinner`.

@@ -146,6 +146,29 @@ try {
     for (const pid of extra) await call({ action: 'removePerson', personId: pid }, admin);
   });
 
+  await t('event dates, day-specific jobs and an organiser-only run sheet', async () => {
+    const bad = await call({ action: 'updateEvent', eventId: e1, event: { startDate: '2027-04-04', endDate: '2027-04-02' } }, admin);
+    assert.equal(bad.status, 400);
+    assert.equal((await call({ action: 'updateEvent', eventId: e1, event: { startDate: '2027-04-02' } })).status, 403);
+    const r = await call({ action: 'updateEvent', eventId: e1, event: { startDate: '2027-04-02', endDate: '2027-04-04' } }, admin);
+    const ev = r.data.state.events.find((x) => x.id === e1);
+    assert.equal(ev.dates, 'Fri 2 to Sun 4 Apr 2027');
+    const fri = (await call()).data.tasks.find((x) => x.eventId === e1 && x.title.startsWith('Lead cook, Friday'));
+    assert.equal(fri.day, 0); assert.equal(fri.slot, 'Dinner');
+    const a = await call({ action: 'addTask', eventId: e1, title: 'Set the tables', phase: 'During', day: '0', slot: 'Dinner' });
+    const job = a.data.state.tasks.find((x) => x.id === a.data.taskId);
+    assert.equal(job.day, 0); assert.equal(job.slot, 'Dinner');
+    const off = await call({ action: 'addTask', eventId: e1, title: 'Day 9', phase: 'During', day: '5' });
+    assert.equal(off.data.state.tasks.find((x) => x.id === off.data.taskId).day, null, 'day beyond the event is dropped');
+    const moved = await call({ action: 'editTask', taskId: job.id, phase: 'Before' }, admin);
+    assert.equal(moved.data.state.tasks.find((x) => x.id === job.id).day, null, 'only During jobs have a day');
+    assert.equal((await call({ action: 'setRunSheet', eventId: e1, day: 0, text: '6pm Dinner' })).status, 403, 'guests cannot edit the run sheet');
+    await call({ action: 'setRunSheet', eventId: e1, day: 0, text: '3pm Gates open\n6pm Dinner' }, admin);
+    assert.equal((await call()).data.events.find((x) => x.id === e1).runSheet[0], '3pm Gates open\n6pm Dinner', 'guests can read it');
+    await call({ action: 'deleteTask', taskId: job.id }, admin);
+    await call({ action: 'deleteTask', taskId: off.data.taskId }, admin);
+  });
+
   await t('shopping list: add, claim, tick off, scoped by event', async () => {
     const a1 = await call({ action: 'addItem', eventId: e1, name: 'Tonic water', qty: '12 bottles', personId: ian });
     const item = a1.data.itemId;

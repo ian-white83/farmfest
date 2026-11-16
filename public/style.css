@@ -196,3 +196,13 @@ table.mini td, table.mini th { text-align: left; padding: 6px 4px; border-bottom
 .badge.lock { background: var(--chip); color: var(--muted); font-weight: 600; padding: 6px 10px; }
 .card.item.got { opacity: .7; }
 nav.tabs button { font-size: .7rem; }
+
+/* Day headings in the During list, and the event run sheet */
+.dayhead { font-size: 1rem; margin: 18px 0 8px; }
+.badge.when { background: var(--chip, rgba(127,127,127,.15)); color: inherit; }
+.runsheet { margin: 6px 0 12px; }
+.rs-day + .rs-day { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+ul.rs { list-style: none; padding: 0; margin: 4px 0 0; }
+ul.rs li { padding: 3px 0; }
+ul.rs li b { display: inline-block; min-width: 4.2em; }
+.when[hidden] { display: none; }

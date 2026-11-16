@@ -121,6 +121,21 @@
   const multi = () => S.events.length > 1;
   const taskInScope = (t) => filter === 'all' || t.eventId === 'all' || t.eventId === filter;
   const attendees = (ev) => S.people.filter((p) => p.rsvps[ev.id]);
+  const SLOTS = ['Breakfast', 'Morning', 'Lunch', 'Afternoon', 'Dinner', 'Evening'];
+  // The days of an event from its start/end dates: [{ i, label: 'Fri 2 Apr', long: 'Friday 2 April' }].
+  const eventDays = (ev) => {
+    if (!ev || !ev.startDate) return [];
+    const out = [], a = Date.parse(ev.startDate + 'T00:00:00Z'), b = Date.parse((ev.endDate || ev.startDate) + 'T00:00:00Z');
+    for (let t = a, i = 0; t <= b && i < 7; t += 86400000, i++) {
+      const d = new Date(t);
+      const f = (o) => d.toLocaleDateString('en-AU', { timeZone: 'UTC', ...o });
+      out.push({ i, label: f({ weekday: 'short', day: 'numeric', month: 'short' }), long: f({ weekday: 'long', day: 'numeric', month: 'long' }) });
+    }
+    return out;
+  };
+  const taskDay = (t) => (t.day == null || t.eventId === 'all' ? null : eventDays(evById(t.eventId))[t.day] || null);
+  const dayOptions = (ev, cur) => `<option value="">Any day</option>` + eventDays(ev).map((d) => `<option value="${d.i}" ${cur === d.i ? 'selected' : ''}>${esc(d.label)}</option>`).join('');
+  const slotOptions = (cur) => `<option value="">Any time</option>` + SLOTS.map((x) => `<option ${x === cur ? 'selected' : ''}>${x}</option>`).join('');
   const headcount = (ev) => {
     const ps = attendees(ev);
     const night = (n) => ps.filter((p) => p.rsvps[ev.id].nights.includes(n));
@@ -211,7 +226,7 @@
         <h1>I'm coming</h1>
         ${multi() ? `<div class="field"><label for="j-ev">Which event?</label><select id="j-ev" name="eventId">
           ${S.events.map((e) => `<option value="${esc(e.id)}" ${e.id === def ? 'selected' : ''}>${esc(e.name)} (${esc(e.dates)})</option>`).join('')}</select>
-          <p class="small muted">Coming to more than one? Add the others from the Coming tab after this.</p></div>`
+          <p class="small muted">Coming to more than one? Add the others from the Event tab after this.</p></div>`
           : `<p class="muted">${esc(S.events[0].name)} · ${esc(S.events[0].dates)}</p><input type="hidden" name="eventId" value="${esc(def)}">`}
         ${aboutFields()}
         ${rsvpFields(null, 'j')}
@@ -229,7 +244,7 @@
     const going = S.events.filter((e) => p.rsvps[e.id]).length;
     let line;
     if (p.host) line = 'Host: no points needed. Thank you!';
-    else if (!t.req) line = going ? 'No points needed.' : "You haven't RSVP'd yet. Head to Coming.";
+    else if (!t.req) line = going ? 'No points needed.' : "You haven't RSVP'd yet. Head to the Event tab.";
     else if (t.status === 'ok') line = `✅ ${fmtPts(t.have)} of ${t.req} points. You're all set.`;
     else if (t.status === 'warn') line = `${fmtPts(t.have)} of ${t.req} points. Payment awaiting the treasurer.`;
     else line = `${fmtPts(t.have)} of ${t.req} points. Claim ${fmtPts(t.shortPts)} more, or chip in ${money(t.shortDollars)}.`;
@@ -250,7 +265,7 @@
   }
 
   function nav() {
-    const items = [['coming', '🏕️', 'Coming'], ['jobs', '🪓', 'Jobs'], ['shop', '🛒', 'Shopping'], ['chip', '💸', 'Chip in'], ['org', '⚙️', 'Organise']];
+    const items = [['coming', '🏕️', 'Event'], ['jobs', '🪓', 'Jobs'], ['shop', '🛒', 'Shopping'], ['chip', '💸', 'Chip in'], ['org', '⚙️', 'Organise']];
     return `<nav class="tabs">${items.map(([k, ic, l]) => `<button data-act="tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ''}><span class="ic" aria-hidden="true">${ic}</span>${l}</button>`).join('')}</nav>`;
   }
 
@@ -294,7 +309,7 @@
         <div class="spacer">
           <div class="task-title">${esc(t.title)}</div>
           <div class="small muted">${open > 0 ? `${open} of ${t.slots} slot${t.slots > 1 ? 's' : ''} open` : 'All slots taken'}
-            ${t.pending ? ' · <span class="badge pending">points pending</span>' : ''} ${eventTag(t)}</div>
+            ${t.pending ? ' · <span class="badge pending">points pending</span>' : ''} ${eventTag(t)}${t.slot ? ` <span class="badge when">${esc(t.slot)}</span>` : ''}</div>
         </div>
         <div class="pts ${t.points >= 5 ? 'big' : ''}">${t.points}<span class="u">pts</span></div>
       </div>
@@ -324,7 +339,7 @@
         ${['Before', 'During', 'After'].map((ph) => `<button data-act="phase" data-ph="${ph}" aria-pressed="${phase === ph}">${ph} <span class="muted small">(${counts[ph]})</span></button>`).join('')}
       </div>
       <p class="small muted">Big jobs earn big points: cooking a dinner is worth 8, a rubbish run 2. Most events need 3 points per adult staying over.</p>
-      ${tasks.length ? tasks.map(taskCard).join('') : `<p class="muted">No jobs here yet.</p>`}
+      ${tasks.length ? (phase === 'During' ? duringGroups(tasks) : tasks.map(taskCard).join('')) : `<p class="muted">No jobs here yet.</p>`}
       <details class="box" style="margin-top:16px">
         <summary>+ Add a job</summary>
         <form class="stack" data-form="addTask" style="margin-top:12px">
@@ -335,6 +350,7 @@
             <div><label for="t-ph">When</label><select id="t-ph" name="phase">${['Before', 'During', 'After'].map((x) => `<option ${x === phase ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
             <div><label for="t-sl">People needed</label><input id="t-sl" name="slots" type="number" min="1" max="20" value="1" inputmode="numeric"></div>
           </div>
+          ${whenFields(phase !== 'During', null, '', defEv === 'all' ? scopeEvents() : [evById(defEv)])}
           <div class="field"><label for="t-pt">Suggested points</label>
             <select id="t-pt" name="points">
               <option value="1">1: quick errand</option><option value="2" selected>2: an hour or so</option>
@@ -346,7 +362,73 @@
       </details>`;
   }
 
-  // ----- Coming -----
+  // "During" jobs grouped by day (then time of day), with undated jobs last.
+  function duringGroups(tasks) {
+    if (!tasks.some(taskDay)) return tasks.map(taskCard).join('');
+    const groups = new Map();
+    for (const t of tasks) {
+      const d = taskDay(t);
+      const key = d ? t.eventId + '|' + d.i : 'any';
+      if (!groups.has(key)) groups.set(key, { d, ev: d && evById(t.eventId), list: [] });
+      groups.get(key).list.push(t);
+    }
+    const order = [...groups.entries()].sort(([ka, a], [kb, b]) => (ka === 'any') - (kb === 'any')
+      || S.events.indexOf(a.ev) - S.events.indexOf(b.ev) || (a.d?.i ?? 0) - (b.d?.i ?? 0));
+    const slotRank = (t) => (t.slot ? SLOTS.indexOf(t.slot) : SLOTS.length);
+    return order.map(([key, g]) => {
+      const list = g.list.sort((a, b) => slotRank(a) - slotRank(b) || b.points - a.points);
+      const open = list.reduce((n, t) => n + Math.max(0, t.slots - t.claims.length), 0);
+      const title = g.d ? `${g.d.long}${filter === 'all' && multi() ? ` <span class="muted small">· ${esc(g.ev.name)}</span>` : ''}` : 'Any day';
+      return `<h3 class="dayhead">${title} <span class="muted small">${open ? `${open} spot${open === 1 ? '' : 's'} open` : 'all filled'}</span></h3>${list.map(taskCard).join('')}`;
+    }).join('');
+  }
+
+  // Day + time-of-day pickers for "During" jobs. Picking a day ties the job to that day's event.
+  function whenFields(hidden, day, slot, evs, eventId) {
+    const dated = evs.filter((e) => e && eventDays(e).length);
+    const dayCtl = !dated.length ? `<select name="day" disabled><option value="">Add event dates first</option></select>`
+      : dated.length === 1 ? `<select name="day">${dayOptions(dated[0], day)}</select>`
+      : `<select name="day"><option value="">Any day</option>${dated.map((e) => `<optgroup label="${esc(e.name)}">${eventDays(e).map((d) => `<option value="${esc(e.id)}|${d.i}" ${eventId === e.id && day === d.i ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}</optgroup>`).join('')}</select>`;
+    return `<div class="grid2 when" ${hidden ? 'hidden' : ''}>
+        <div><label>Which day</label>${dayCtl}</div>
+        <div><label>Time of day</label><select name="slot">${slotOptions(slot)}</select></div>
+      </div>`;
+  }
+  // Reads the day picker; a "eventId|day" value also says which event the job belongs to.
+  function readWhen(fd, body) {
+    const v = String(fd.get('day') ?? '');
+    if (v.includes('|')) { const [e, d] = v.split('|'); body.eventId = e; body.day = d; } else body.day = v;
+    body.slot = fd.get('slot') || '';
+    return body;
+  }
+
+  // Run sheet for each day of an event. Everyone sees it; only organisers edit it.
+  function runSheet(ev) {
+    const days = eventDays(ev);
+    const admin = S.roles.admin;
+    if (!days.length) return admin ? `<p class="small muted">Add start and end dates to this event in Organise to build a run sheet.</p>` : '';
+    const rs = ev.runSheet || {};
+    const has = days.some((d) => rs[d.i]);
+    if (!has && !admin) return '';
+    const lines = (txt) => txt.split('\n').filter((l) => l.trim()).map((l) => {
+      const m = l.match(/^\s*(\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)?|\d{1,2}[:.]\d{2})\s*[-–:]?\s+(.*)$/i);
+      return m ? `<li><b>${esc(m[1])}</b> ${esc(m[2])}</li>` : `<li>${esc(l)}</li>`;
+    }).join('');
+    return `<div class="card runsheet">
+      <div class="row"><b class="spacer">📋 Run sheet</b>${admin ? '<span class="badge lock">organisers edit</span>' : ''}</div>
+      ${days.map((d) => `<div class="rs-day">
+        <div class="small" style="font-weight:600">${esc(d.long)}</div>
+        ${rs[d.i] ? `<ul class="rs">${lines(rs[d.i])}</ul>` : `<p class="small muted">Nothing planned yet.</p>`}
+        ${admin ? `<details class="small" data-key="rs-${esc(ev.id)}-${d.i}"><summary>Edit ${esc(d.label)}</summary>
+          <form class="stack" data-form="runSheet" data-ev="${esc(ev.id)}" data-day="${d.i}" style="margin-top:6px">
+            <textarea name="text" rows="5" maxlength="2000" placeholder="One line each, e.g.&#10;3pm Gates open&#10;6pm Dinner: Ian's lamb&#10;8pm Fire and bar">${esc(rs[d.i] || '')}</textarea>
+            <button class="btn primary sm" type="submit">Save ${esc(d.label)}</button>
+          </form></details>` : ''}
+      </div>`).join('')}
+    </div>`;
+  }
+
+  // ----- Event -----
   function eventSection(ev) {
     const p = person(me);
     const mine = p.rsvps[ev.id];
@@ -362,7 +444,9 @@
     }).join('');
     return `
       <section class="evsec">
-        ${multi() ? `<h2>${esc(ev.name)} <span class="muted small">${esc(ev.dates)}</span></h2>` : '<h2>Headcount</h2>'}
+        <h2>${esc(ev.name)} <span class="muted small">${esc(ev.dates)}</span></h2>
+        ${runSheet(ev)}
+        ${multi() ? '' : '<h3 class="dayhead">Headcount</h3>'}
         <div class="stats">
           <div class="stat"><b>${h.friA}<small>+${h.friK}</small></b><span>Friday night<br>adults + kids</span></div>
           <div class="stat"><b>${h.satA}<small>+${h.satK}</small></b><span>Saturday night<br>adults + kids</span></div>
@@ -387,7 +471,7 @@
       </section>`;
   }
 
-  function viewComing() {
+  function viewComing() { // the Event tab
     const p = person(me);
     return scopeEvents().map(eventSection).join('') + `
       <h2>About me</h2>
@@ -454,7 +538,7 @@
       <h2>Your buy-in</h2>
       <div class="card stack">
         ${p.host ? `<p>You're a host, so there's nothing to pay. Thank you!</p>` :
-          !t.req ? `<p>Nothing needed yet. RSVP to an event on the Coming tab.</p>` :
+          !t.req ? `<p>Nothing needed yet. RSVP to an event on the Event tab.</p>` :
           t.status === 'ok' ? `<p><b>You're all set.</b> ${fmtPts(t.earned)} points from jobs${t.paidOk ? ` plus ${money(t.paidOk)} chipped in` : ''}.</p>` :
           `<p>You need <b>${t.req} points</b> across ${going.length > 1 ? `your ${going.length} events (${going.map((e) => esc(e.name)).join(', ')})` : esc(going[0]?.name || 'your event')}. You have <b>${fmtPts(t.have)}</b>${t.paidWait ? `, plus ${money(t.paidWait)} awaiting check` : ''}.</p>
            ${t.shortPts > 0 ? `<p>Claim ${fmtPts(t.shortPts)} more points of jobs, or chip in <b>${money(t.shortDollars)}</b> to the host fund (${money(dpp)} per point). A mix works too.</p>` : ''}`}
@@ -623,6 +707,7 @@
             <select name="points" aria-label="Points">${[1, 2, 3, 4, 5, 6, 7, 8].map((v) => opt(v, t.points)).join('')}</select>
           </div>
           <label class="small">People needed <input name="slots" type="number" min="1" max="20" value="${t.slots}"></label>
+          ${t.eventId === 'all' ? '' : whenFields(t.phase !== 'During', t.day, t.slot, [evById(t.eventId)], t.eventId)}
           <label class="check small"><input type="checkbox" name="assignOnly" ${t.assignOnly ? 'checked' : ''}> Organiser assigns (people can't claim it themselves)</label>
           <div class="row wrap-row">
             <button class="btn primary sm" type="submit">${t.pending ? 'Approve and save' : 'Save'}</button>
@@ -641,9 +726,10 @@
         <form class="stack" data-form="event" data-ev="${esc(e.id)}" style="margin-top:10px">
           <div class="field"><label>Event name</label><input name="name" type="text" maxlength="80" value="${esc(e.name)}"></div>
           <div class="grid2">
-            <div><label>Dates</label><input name="dates" type="text" maxlength="80" value="${esc(e.dates)}"></div>
-            <div><label>Event code</label><input name="code" type="text" maxlength="20" autocapitalize="characters" value="${esc(e.code)}"></div>
+            <div><label>Start date</label><input name="startDate" type="date" value="${esc(e.startDate || '')}"></div>
+            <div><label>End date</label><input name="endDate" type="date" value="${esc(e.endDate || '')}" min="${esc(e.startDate || '')}"></div>
           </div>
+          <div class="field"><label>Event code</label><input name="code" type="text" maxlength="20" autocapitalize="characters" value="${esc(e.code)}"></div>
           <div class="field"><label>Location</label><input name="location" type="text" maxlength="120" value="${esc(e.location)}"></div>
           <div class="field"><label>WhatsApp group invite link</label><input name="whatsappUrl" type="url" placeholder="https://chat.whatsapp.com/…" value="${esc(e.whatsappUrl)}"></div>
           <div class="grid2">
@@ -678,9 +764,10 @@
         <form class="stack" data-form="addEvent" style="margin-top:10px">
           <div class="field"><label for="ne-n">Event name</label><input id="ne-n" name="name" type="text" maxlength="80" required placeholder="Winter Fest 2027"></div>
           <div class="grid2">
-            <div><label for="ne-d">Dates</label><input id="ne-d" name="dates" type="text" maxlength="80" placeholder="1 to 2 August 2027"></div>
-            <div><label for="ne-c">Event code</label><input id="ne-c" name="code" type="text" maxlength="20" required autocapitalize="characters" placeholder="WINTER27"></div>
+            <div><label for="ne-s">Start date</label><input id="ne-s" name="startDate" type="date"></div>
+            <div><label for="ne-e">End date</label><input id="ne-e" name="endDate" type="date"></div>
           </div>
+          <div class="field"><label for="ne-c">Event code</label><input id="ne-c" name="code" type="text" maxlength="20" required autocapitalize="characters" placeholder="WINTER27"></div>
           <div class="field"><label for="ne-cp">Start with jobs from</label><select id="ne-cp" name="copyFrom">
             <option value="">The standard Farm Fest list</option>
             ${S.events.map((e) => `<option value="${esc(e.id)}">A copy of ${esc(e.name)}'s jobs</option>`).join('')}
@@ -741,7 +828,7 @@
     } else if (kind === 'about') {
       act({ action: 'updatePerson', personId: me, person: { name: fd.get('name'), sponsor: fd.get('sponsor'), firstTimer: fd.get('firstTimer') === 'on' } }, 'Saved');
     } else if (kind === 'addTask') {
-      const r = await act({ action: 'addTask', eventId: fd.get('eventId'), title: fd.get('title'), phase: fd.get('phase'), slots: fd.get('slots'), points: fd.get('points'), assignOnly: fd.get('assignOnly') === 'on', addedBy: person(me)?.name }, 'Job added');
+      const r = await act(readWhen(fd, { action: 'addTask', eventId: fd.get('eventId'), title: fd.get('title'), phase: fd.get('phase'), slots: fd.get('slots'), points: fd.get('points'), assignOnly: fd.get('assignOnly') === 'on', addedBy: person(me)?.name }), 'Job added');
       if (r && tab === 'jobs') { phase = fd.get('phase'); ls.set('phase', phase); render(); }
     } else if (kind === 'pay') {
       act({ action: 'reportPayment', personId: me, amount: fd.get('amount'), kind: fd.get('kind'), note: fd.get('note') }, 'Recorded. The treasurer will confirm it.');
@@ -767,11 +854,14 @@
     } else if (kind === 'editTask') {
       const body = { action: 'editTask', taskId: f.dataset.id, title: fd.get('title'), phase: fd.get('phase'), points: fd.get('points'), slots: fd.get('slots'), assignOnly: fd.get('assignOnly') === 'on', pending: false };
       if (fd.get('eventId')) body.eventId = fd.get('eventId');
+      if (fd.has('day') || fd.has('slot')) readWhen(fd, body);
       act(body, 'Job saved');
+    } else if (kind === 'runSheet') {
+      act({ action: 'setRunSheet', eventId: f.dataset.ev, day: f.dataset.day, text: fd.get('text') }, 'Run sheet saved');
     } else if (kind === 'event') {
       act({ action: 'updateEvent', eventId: f.dataset.ev, event: Object.fromEntries(fd.entries()) }, 'Event saved');
     } else if (kind === 'addEvent') {
-      const r = await act({ action: 'addEvent', event: { name: fd.get('name'), dates: fd.get('dates'), code: fd.get('code') }, copyFrom: fd.get('copyFrom') || undefined }, 'Event created');
+      const r = await act({ action: 'addEvent', event: { name: fd.get('name'), startDate: fd.get('startDate'), endDate: fd.get('endDate'), code: fd.get('code') }, copyFrom: fd.get('copyFrom') || undefined }, 'Event created');
       if (r?.eventId) { filter = r.eventId; ls.set('filter', filter); render(); }
     } else if (kind === 'addItem') {
       const r = await act({ action: 'addItem', eventId: fd.get('eventId'), name: fd.get('name'), qty: fd.get('qty'), note: fd.get('note'), personId: me, addedBy: person(me)?.name }, 'Added to the list');
@@ -829,6 +919,7 @@
   app.addEventListener('change', (ev) => {
     const b = ev.target;
     if (b.id === 'upd-code' || b.id === 'upd-ev') refreshUpdate();
+    if (b.name === 'phase' && b.form) { const w = b.form.querySelector('.when'); if (w) w.hidden = b.value !== 'During'; }
     if (b.dataset.act === 'notDone') act({ action: 'setNotDone', taskId: b.dataset.tid, personId: b.dataset.pid, notDone: !b.checked }, b.checked ? 'Marked done' : 'Points removed');
     if (b.dataset.act === 'host') act({ action: 'updatePerson', personId: b.dataset.id, person: { host: b.checked } }, 'Updated');
   });
