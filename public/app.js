@@ -267,8 +267,11 @@
 
   function renderApp() {
     const y = window.scrollY;
+    // Keep open editors open across re-renders (e.g. after assigning someone).
+    const openKeys = new Set([...app.querySelectorAll('details[open][data-key]')].map((d) => d.dataset.key));
     const body = tab === 'coming' ? viewComing() : tab === 'chip' ? viewChip() : tab === 'org' ? viewOrg() : tab === 'shop' ? viewShop() : viewJobs();
     app.innerHTML = header() + nav() + `<main class="wrap">${filterBar()}${body}</main>`;
+    app.querySelectorAll('details[data-key]').forEach((d) => { if (openKeys.has(d.dataset.key)) d.open = true; });
     window.scrollTo(0, y);
   }
 
@@ -592,19 +595,25 @@
   }
 
   // People to offer when assigning: those coming to the job's event first, then everyone else.
-  function assignOptions(t) {
+  // Tick several and assign them in one go, up to the open spots.
+  function assignPicker(t) {
     const taken = new Set(t.claims.map((c) => c.personId));
     const pool = S.people.filter((p) => !taken.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
     const going = t.eventId === 'all' ? pool : pool.filter((p) => p.rsvps[t.eventId]);
     const others = pool.filter((p) => !going.includes(p));
-    const o = (p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`;
-    return going.map(o).join('') + (others.length ? `<optgroup label="Not RSVP'd to this event">${others.map(o).join('')}</optgroup>` : '');
+    const left = t.slots - t.claims.length;
+    if (!pool.length) return '<p class="small muted">Everyone is already on this job.</p>';
+    const box = (p) => `<label class="check small"><input type="checkbox" data-pick="${esc(t.id)}" value="${esc(p.id)}"> ${esc(p.name)}</label>`;
+    return `<div class="small"><b>Assign people</b> (${left} spot${left === 1 ? '' : 's'} left)</div>
+      <div class="checks">${going.map(box).join('')}</div>
+      ${others.length ? `<details class="small"><summary>Not RSVP'd to this event (${others.length})</summary><div class="checks" style="margin-top:6px">${others.map(box).join('')}</div></details>` : ''}
+      <div><button class="btn sm" type="button" data-act="assign" data-id="${esc(t.id)}" data-left="${left}">Assign ticked</button></div>`;
   }
 
   function taskRow(t) {
     const opt = (v, cur) => `<option value="${v}" ${Number(cur) === v ? 'selected' : ''}>${v}</option>`;
     return `
-      <details class="box">
+      <details class="box" data-key="task-${esc(t.id)}">
         <summary>${esc(t.title)} <span class="muted small">· ${t.phase} · ${t.points} pts · ${t.claims.length}/${t.slots}</span>${t.pending ? ' <span class="badge pending">pending</span>' : ''}</summary>
         <form class="stack" data-form="editTask" data-id="${esc(t.id)}" style="margin-top:10px">
           <input name="title" type="text" maxlength="120" value="${esc(t.title)}" aria-label="Job title">
@@ -621,15 +630,14 @@
           </div>
           ${t.claims.length ? `<div class="small"><b>Doing it</b> (untick if it didn't get done)</div>
             ${t.claims.map((c) => { const p = person(c.personId); return `<div class="row"><label class="check spacer"><input type="checkbox" data-act="notDone" data-tid="${esc(t.id)}" data-pid="${esc(c.personId)}" ${c.notDone ? '' : 'checked'}> ${esc(p ? p.name : '?')} did it${c.assigned ? ' <span class="muted small">(assigned)</span>' : ''}</label><button class="btn sm ghost danger" type="button" data-act="unassign" data-tid="${esc(t.id)}" data-pid="${esc(c.personId)}">Remove</button></div>`; }).join('')}` : ''}
-          ${t.claims.length < t.slots ? `<div class="row"><select class="spacer" id="as-${esc(t.id)}" aria-label="Person to assign"><option value="">Assign someone…</option>${assignOptions(t)}</select>
-            <button class="btn sm" type="button" data-act="assign" data-id="${esc(t.id)}">Assign</button></div>` : ''}
+          ${t.claims.length < t.slots ? assignPicker(t) : '<p class="small muted">All spots filled. Raise "People needed" to add more.</p>'}
         </form>
       </details>`;
   }
 
   function eventForm(e) {
     return `
-      <details class="box"><summary>${esc(e.name)} <span class="muted small">· ${esc(e.dates)} · code ${esc(e.code)}</span></summary>
+      <details class="box" data-key="ev-${esc(e.id)}"><summary>${esc(e.name)} <span class="muted small">· ${esc(e.dates)} · code ${esc(e.code)}</span></summary>
         <form class="stack" data-form="event" data-ev="${esc(e.id)}" style="margin-top:10px">
           <div class="field"><label>Event name</label><input name="name" type="text" maxlength="80" value="${esc(e.name)}"></div>
           <div class="grid2">
@@ -798,9 +806,11 @@
     if (a === 'deleteEvent') { if (confirmTwice(b, 'Tap again: deletes event and its jobs')) act({ action: 'deleteEvent', eventId: b.dataset.ev }, 'Event deleted'); return; }
     if (a === 'csv') { downloadCsv(); return; }
     if (a === 'assign') {
-      const pid = app.querySelector('#as-' + CSS.escape(b.dataset.id))?.value;
-      if (!pid) { toast('Pick someone first', true); return; }
-      act({ action: 'assign', taskId: b.dataset.id, personId: pid }, 'Assigned'); return;
+      const ids = [...app.querySelectorAll('input[data-pick="' + CSS.escape(b.dataset.id) + '"]:checked')].map((x) => x.value);
+      if (!ids.length) { toast('Tick someone first', true); return; }
+      const left = Number(b.dataset.left);
+      if (ids.length > left) { toast(`Only ${left} spot${left === 1 ? '' : 's'} left. Untick some, or raise "People needed"`, true); return; }
+      act({ action: 'assign', taskId: b.dataset.id, personIds: ids }, ids.length > 1 ? `Assigned ${ids.length} people` : 'Assigned'); return;
     }
     if (a === 'unassign') { if (confirmTwice(b, 'Tap again')) act({ action: 'unclaim', taskId: b.dataset.tid, personId: b.dataset.pid }, 'Removed'); return; }
     if (a === 'grab') { act({ action: 'claimItem', itemId: b.dataset.id, personId: me }, "Thanks! It's yours"); return; }

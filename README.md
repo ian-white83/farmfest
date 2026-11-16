@@ -29,7 +29,8 @@ Each overnight adult needs 3 points, and each day-visit adult needs 2. A missing
 ## Shopping list and assigned jobs
 
 - **Shopping tab:** anyone can add an item (name, how many, note) for one event or all of them. Someone taps **I'll grab it** so nobody doubles up, then **Got it ✓** once it's bought. Items don't earn points; receipts go under Chip in as "Meal or other costs". Organisers can remove any item, and the person who added an item can remove it until someone claims it.
-- **Organiser-assigned jobs:** in Organise, tick **Organiser assigns** on a job, for example "Bar host". People then see "🔒 An organiser assigns this one" instead of a claim button. Organisers pick someone from the **Assign someone…** list, which shows people coming to that event first, and can remove them again. Assigned jobs earn points like any other.
+- **Organiser-assigned jobs:** in Organise, tick **Organiser assigns** on a job, for example "Bar host". People then see "🔒 An organiser assigns this one" instead of a claim button. Organisers open the job, tick as many people as there are spots left (people coming to that event are listed first) and tap **Assign ticked**. Set **People needed** to the number of spots, for example 4 for the bar. Organisers can remove people again. Assigned jobs earn points like any other.
+- **Jobs needing several people:** anyone can claim a self-select job until all its spots are taken, then it shows "All slots taken".
  (about 10 minutes, free)
 
 1. Put this folder in a GitHub repository.

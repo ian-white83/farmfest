@@ -129,6 +129,23 @@ try {
     assert.equal(e.data.state.tasks.find((x) => x.id === g.data.taskId).assignOnly, true);
   });
 
+  await t('organisers assign several people at once, up to the spots left', async () => {
+    const extra = [];
+    for (const n of ['Amy', 'Bo', 'Cy', 'Di']) extra.push((await call({ action: 'join', eventId: e1, person: { name: n } })).data.personId);
+    const bar = (await call()).data.tasks.find((x) => x.title === 'Bar host (one night)' && x.eventId === e1);
+    assert.equal(bar.slots, 4, 'bar seeded with 4 spots');
+    assert.equal(bar.claims.length, 1, 'Ian already on it');
+    const tooMany = await call({ action: 'assign', taskId: bar.id, personIds: extra }, admin);
+    assert.equal(tooMany.status, 409);
+    assert.match(tooMany.data.error, /Only 3 spots left/);
+    const r = await call({ action: 'assign', taskId: bar.id, personIds: [extra[0], extra[1], extra[2], ian] }, admin);
+    assert.equal(r.status, 200, 'people already on the job are skipped');
+    assert.equal(r.data.assigned, 3);
+    assert.equal(r.data.state.tasks.find((x) => x.id === bar.id).claims.length, 4);
+    assert.equal((await call({ action: 'assign', taskId: bar.id, personIds: [extra[3]] }, admin)).status, 409);
+    for (const pid of extra) await call({ action: 'removePerson', personId: pid }, admin);
+  });
+
   await t('shopping list: add, claim, tick off, scoped by event', async () => {
     const a1 = await call({ action: 'addItem', eventId: e1, name: 'Tonic water', qty: '12 bottles', personId: ian });
     const item = a1.data.itemId;
