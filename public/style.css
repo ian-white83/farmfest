@@ -206,3 +206,17 @@ ul.rs { list-style: none; padding: 0; margin: 4px 0 0; }
 ul.rs li { padding: 3px 0; }
 ul.rs li b { display: inline-block; min-width: 4.2em; }
 .when[hidden] { display: none; }
+
+/* Leaderboard podium */
+.podium { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end; margin-top: 8px; }
+.pod { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.pod-names { display: flex; flex-direction: column; gap: 2px; font-size: .85rem; font-weight: 600; margin-bottom: 4px; word-break: break-word; }
+.pod-names .me-name { text-decoration: underline; }
+.pod-medal { font-size: 2rem; line-height: 1; margin-bottom: 4px; }
+.pod-block { width: 100%; border-radius: 10px 10px 0 0; display: flex; flex-direction: column; align-items: center; padding-top: 8px; color: #2b2214; }
+.pod-block b { font-size: 1.5rem; }
+.pod-block span { font-size: .75rem; font-weight: 600; }
+.gold .pod-block { height: 110px; background: linear-gradient(#f6d365, #e0a82e); }
+.silver .pod-block { height: 84px; background: linear-gradient(#e6e9ee, #b7bec8); }
+.bronze .pod-block { height: 64px; background: linear-gradient(#e9b48a, #c27c4a); }
+.shitlist { margin-top: 10px; }

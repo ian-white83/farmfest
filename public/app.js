@@ -471,9 +471,46 @@
       </section>`;
   }
 
+  // Leaderboard: points from jobs plus buy-in money (converted to points), pooled per person.
+  function leaderboard() {
+    const evIds = new Set(scopeEvents().map((e) => e.id));
+    const ps = S.people.filter((p) => !p.host && Object.keys(p.rsvps).some((id) => evIds.has(id)));
+    if (!ps.length) return '';
+    const score = (p) => p.summary.have + p.summary.pending;
+    const levels = [...new Set(ps.map(score).filter((x) => x > 0))].sort((a, b) => b - a).slice(0, 3);
+    const names = (list) => {
+      const shown = list.slice(0, 3).map((p) => `<span class="${p.id === me ? 'me-name' : ''}">${esc(p.name)}</span>`).join('');
+      return shown + (list.length > 3 ? `<span class="muted">+${list.length - 3} more</span>` : '');
+    };
+    const step = (rank, cls, medal) => {
+      const lvl = levels[rank];
+      const who = lvl === undefined ? [] : ps.filter((p) => score(p) === lvl).sort((a, b) => a.name.localeCompare(b.name));
+      return `<div class="pod ${cls}">
+        <div class="pod-names">${who.length ? names(who) : '<span class="muted">Up for grabs</span>'}</div>
+        <div class="pod-medal">${medal}</div>
+        <div class="pod-block"><b>${rank + 1}</b>${lvl !== undefined ? `<span>${fmtPts(lvl)} pts</span>` : ''}</div>
+      </div>`;
+    };
+    const low = Math.min(...ps.map(score));
+    // Tied for last, unless they're also on the podium (e.g. only two people).
+    const last = ps.filter((p) => score(p) === low && !(low > 0 && levels.includes(low))).sort((a, b) => a.name.localeCompare(b.name));
+    return `
+      <h2>🏆 Leaderboard</h2>
+      <div class="card">
+        <p class="small muted" style="margin-top:0">Points from jobs plus money chipped in ($${S.settings.dollarsPerPoint || 20} = 1 point).</p>
+        <div class="podium">${step(1, 'silver', '🥈')}${step(0, 'gold', '🥇')}${step(2, 'bronze', '🥉')}</div>
+      </div>
+      ${last.length ? `<div class="card shitlist">
+        <div class="row"><b class="spacer">💩 The Shit List</b><span class="small muted">${fmtPts(low)} pts</span></div>
+        <p class="small muted">${low === 0 ? 'People yet to grab a job or chip in money.' : 'Bringing up the rear. Grab a job to get off this list.'}</p>
+        <div class="names">${last.slice(0, 30).map((p) => `<span class="tag ${p.id === me ? 'me-tag' : ''}">💩 ${esc(p.name)}</span>`).join('')}${last.length > 30 ? `<span class="tag">+${last.length - 30} more</span>` : ''}</div>
+        ${last.some((p) => p.id === me) ? `<button class="btn primary sm" data-act="tab" data-tab="jobs" style="margin-top:10px">Get me off this list</button>` : ''}
+      </div>` : ''}`;
+  }
+
   function viewComing() { // the Event tab
     const p = person(me);
-    return scopeEvents().map(eventSection).join('') + `
+    return scopeEvents().map(eventSection).join('') + leaderboard() + `
       <h2>About me</h2>
       <form class="card stack" data-form="about">${aboutFields(p)}<button class="btn primary full" type="submit">Save</button></form>`;
   }

@@ -72,3 +72,7 @@ npm run dev     # http://localhost:8888, codes FF27 / ORG / CASH
 - **Dates:** each event has a start and end date (date pickers in Organise, up to 7 days). The dates line is written from them, e.g. "Fri 2 to Sun 4 Apr 2027".
 - **Day-specific jobs:** a "During" job can be tied to a day and a time of day (Breakfast, Lunch, Dinner and so on). The Jobs tab then groups During jobs by day, for example all the Friday dinner jobs together. Jobs shared by all events can't have a day.
 - **Run sheet:** the Event tab (formerly Coming) shows a run sheet for each day of the event at the top. Everyone with the event code can read it; only organisers can edit it. Write one line per item, e.g. `6pm Dinner`.
+
+## Leaderboard and The Shit List
+
+The Event tab shows a podium with gold, silver and bronze for the top three scores (job points plus buy-in money converted to points). People tied on a score share a medal. Below it, "The Shit List" shows 💩 next to whoever is tied for last, which is everyone on zero until they grab a job or chip in. Hosts are left out of both.
