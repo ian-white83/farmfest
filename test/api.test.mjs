@@ -114,6 +114,36 @@ try {
     assert.equal(info.data.state.events.find((x) => x.id === e2).mealCosts, 'Asado $35');
   });
 
+  await t('organiser-assigned jobs: guests cannot claim, organisers assign', async () => {
+    const bar = (await call()).data.tasks.find((x) => x.title === 'Bar host (one night)' && x.eventId === e1);
+    assert.equal(bar.assignOnly, true);
+    assert.equal((await call({ action: 'claim', taskId: bar.id, personId: ian })).status, 403);
+    assert.equal((await call({ action: 'assign', taskId: bar.id, personId: ian })).status, 403, 'guests cannot assign');
+    const r = await call({ action: 'assign', taskId: bar.id, personId: ian }, admin);
+    const c = r.data.state.tasks.find((x) => x.id === bar.id).claims[0];
+    assert.equal(c.personId, ian); assert.equal(c.assigned, true);
+    assert.equal(r.data.state.people.find((p) => p.id === ian).summary.earned, 5, 'shirts 3 + bar 2');
+    const g = await call({ action: 'addTask', eventId: e1, title: 'Gate duty', assignOnly: true });
+    assert.equal(g.data.state.tasks.find((x) => x.id === g.data.taskId).assignOnly, false, 'only organisers can make assign-only jobs');
+    const e = await call({ action: 'editTask', taskId: g.data.taskId, assignOnly: true }, admin);
+    assert.equal(e.data.state.tasks.find((x) => x.id === g.data.taskId).assignOnly, true);
+  });
+
+  await t('shopping list: add, claim, tick off, scoped by event', async () => {
+    const a1 = await call({ action: 'addItem', eventId: e1, name: 'Tonic water', qty: '12 bottles', personId: ian });
+    const item = a1.data.itemId;
+    assert.equal((await call({ action: 'addItem', eventId: e2, name: 'Ice' })).status, 403, 'needs the winter code');
+    const w = await call({ action: 'addItem', eventId: e2, name: 'Ice', qty: '4 bags' }, winterOnly);
+    assert.ok(!(await call()).data.shopping.some((x) => x.id === w.data.itemId), 'april-only viewers do not see winter items');
+    await call({ action: 'claimItem', itemId: item, personId: ian });
+    assert.equal((await call({ action: 'claimItem', itemId: item, personId: karen }, both)).status, 409);
+    assert.equal((await call({ action: 'setItemGot', itemId: item, personId: karen, got: true }, both)).status, 403);
+    const got = await call({ action: 'setItemGot', itemId: item, personId: ian, got: true });
+    assert.equal(got.data.state.shopping.find((x) => x.id === item).got, true);
+    assert.equal((await call({ action: 'deleteItem', itemId: item, personId: ian })).status, 403, 'claimed items need an organiser to delete');
+    assert.equal((await call({ action: 'deleteItem', itemId: item }, admin)).status, 200);
+  });
+
   await t('reset one event leaves the other alone', async () => {
     const r = await call({ action: 'resetEvent', eventId: e2 }, admin);
     const me = r.data.state.people.find((p) => p.id === ian);

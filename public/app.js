@@ -250,7 +250,7 @@
   }
 
   function nav() {
-    const items = [['coming', '🏕️', 'Coming'], ['jobs', '🪓', 'Jobs'], ['chip', '💸', 'Chip in'], ['org', '⚙️', 'Organise']];
+    const items = [['coming', '🏕️', 'Coming'], ['jobs', '🪓', 'Jobs'], ['shop', '🛒', 'Shopping'], ['chip', '💸', 'Chip in'], ['org', '⚙️', 'Organise']];
     return `<nav class="tabs">${items.map(([k, ic, l]) => `<button data-act="tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ''}><span class="ic" aria-hidden="true">${ic}</span>${l}</button>`).join('')}</nav>`;
   }
 
@@ -267,7 +267,7 @@
 
   function renderApp() {
     const y = window.scrollY;
-    const body = tab === 'coming' ? viewComing() : tab === 'chip' ? viewChip() : tab === 'org' ? viewOrg() : viewJobs();
+    const body = tab === 'coming' ? viewComing() : tab === 'chip' ? viewChip() : tab === 'org' ? viewOrg() : tab === 'shop' ? viewShop() : viewJobs();
     app.innerHTML = header() + nav() + `<main class="wrap">${filterBar()}${body}</main>`;
     window.scrollTo(0, y);
   }
@@ -283,7 +283,7 @@
     const full = t.claims.length >= t.slots;
     const names = t.claims.map((c) => {
       const p = c.personId && person(c.personId);
-      return `<span class="tag ${c.personId === me ? 'me-tag' : ''} ${c.notDone ? 'struck' : ''}">${esc(p ? p.name : 'Someone')}${c.notDone ? ' (not done)' : ''}</span>`;
+      return `<span class="tag ${c.personId === me ? 'me-tag' : ''} ${c.notDone ? 'struck' : ''}">${esc(p ? p.name : 'Someone')}${c.notDone ? ' (not done)' : ''}${c.assigned ? ' · assigned' : ''}</span>`;
     }).join('');
     const open = t.slots - t.claims.length;
     return `<div class="card">
@@ -298,7 +298,8 @@
       ${names ? `<div class="names">${names}</div>` : ''}
       <div class="row" style="margin-top:10px">
         ${mine ? `<button class="btn sm" data-act="unclaim" data-id="${esc(t.id)}">Drop it</button>`
-               : `<button class="btn primary sm" data-act="claim" data-id="${esc(t.id)}" ${full ? 'disabled' : ''}>I'll do it</button>`}
+          : t.assignOnly ? `<span class="badge lock">🔒 An organiser assigns this one</span>`
+          : `<button class="btn primary sm" data-act="claim" data-id="${esc(t.id)}" ${full ? 'disabled' : ''}>I'll do it</button>`}
         <span class="spacer"></span>
         <button class="btn ghost sm" data-act="share" data-id="${esc(t.id)}">Share</button>
       </div>
@@ -390,6 +391,52 @@
       <form class="card stack" data-form="about">${aboutFields(p)}<button class="btn primary full" type="submit">Save</button></form>`;
   }
 
+  // ----- Shopping -----
+  function itemCard(x) {
+    const who = x.claimedBy === 'someone' ? 'Someone' : x.claimedBy ? person(x.claimedBy)?.name || 'Someone' : '';
+    const mine = x.claimedBy === me;
+    const canDel = S.roles.admin || (x.byId === me && !x.claimedBy);
+    const tag = x.eventId === 'all' ? (multi() ? '<span class="badge all">All events</span>' : '')
+      : filter === 'all' && multi() ? `<span class="badge ev">${esc(evName(x.eventId))}</span>` : '';
+    return `<div class="card item ${x.got ? 'got' : ''}">
+      <div class="row" style="align-items:flex-start">
+        <div class="spacer"><div class="task-title">${x.got ? '✅ ' : ''}${esc(x.name)}${x.qty ? ` <span class="muted">× ${esc(x.qty)}</span>` : ''}</div>
+          <div class="small muted">${x.note ? esc(x.note) + ' · ' : ''}${who ? (x.got ? `Got by ${esc(who)}` : `${esc(who)} is grabbing it`) : 'Still needed'} ${tag}</div></div>
+        ${canDel ? `<button class="btn sm ghost danger" data-act="delItem" data-id="${esc(x.id)}" aria-label="Remove item">✕</button>` : ''}
+      </div>
+      <div class="row" style="margin-top:8px">
+        ${!x.claimedBy ? `<button class="btn primary sm" data-act="grab" data-id="${esc(x.id)}">I'll grab it</button>`
+          : mine ? (x.got ? `<button class="btn sm" data-act="got" data-id="${esc(x.id)}" data-v="0">Not got yet</button>`
+                          : `<button class="btn primary sm" data-act="got" data-id="${esc(x.id)}" data-v="1">Got it ✓</button><button class="btn sm ghost" data-act="ungrab" data-id="${esc(x.id)}">Drop it</button>`)
+          : ''}
+      </div>
+    </div>`;
+  }
+
+  function viewShop() {
+    const items = S.shopping.filter(taskInScope);
+    const need = items.filter((x) => !x.claimedBy), onIt = items.filter((x) => x.claimedBy && !x.got), got = items.filter((x) => x.got);
+    const defEv = filter !== 'all' ? filter : multi() ? 'all' : S.events[0].id;
+    const sec = (title, list) => (list.length ? `<h2>${title} (${list.length})</h2>${list.map(itemCard).join('')}` : '');
+    return `
+      <p class="small muted" style="margin-top:12px">Things we need people to pick up on the way. Tap "I'll grab it" so nobody doubles up, and keep your receipt: log it under Chip in as "Meal or other costs".</p>
+      ${sec('Still needed', need)}${sec('Someone is on it', onIt)}${sec('Got it', got)}
+      ${items.length ? '' : '<p class="muted">Nothing on the list yet.</p>'}
+      <div class="card" style="margin-top:20px">
+        <h3 style="margin-bottom:10px">+ Add to the list</h3>
+        <form class="stack" data-form="addItem">
+          <div class="field"><label for="si-n">Item</label><input id="si-n" name="name" type="text" maxlength="80" required placeholder="e.g. Tonic water"></div>
+          <div class="grid2">
+            <div><label for="si-q">How many</label><input id="si-q" name="qty" type="text" maxlength="30" placeholder="12 bottles"></div>
+            ${multi() ? `<div><label for="si-e">Event</label><select id="si-e" name="eventId">${eventOptions(defEv)}</select></div>` : `<input type="hidden" name="eventId" value="${esc(S.events[0].id)}">`}
+          </div>
+          <div class="field"><label for="si-o">Note</label><input id="si-o" name="note" type="text" maxlength="120" placeholder="Brand, where to get it…"></div>
+          <button class="btn primary full" type="submit">Add item</button>
+        </form>
+      </div>
+`;
+  }
+
   // ----- Chip in -----
   function viewChip() {
     const p = person(me);
@@ -446,6 +493,10 @@
       });
       if (open.length > 5) lines.push(`…plus ${open.length - 5} more`);
     } else lines.push('', '🪓 Every job is claimed. Legends.');
+    const shop = (S.shopping || []).filter((x) => (x.eventId === ev.id || x.eventId === 'all') && !x.claimedBy);
+    if (shop.length) {
+      lines.push('', `🛒 *Still need someone to pick up:* ${shop.slice(0, 6).map((x) => x.name + (x.qty ? ` (${x.qty})` : '')).join(', ')}${shop.length > 6 ? ` +${shop.length - 6} more` : ''}`);
+    }
     if (ps.length) lines.push('', `✅ ${set} of ${ps.length} sign-ups are all set${set < ps.length ? `. ${ps.length - set} still need points or a chip-in.` : '. Many hands, light work.'}`);
     lines.push('', `👉 Claim a job or chip in: ${url}`);
     return lines.join('\n');
@@ -540,6 +591,16 @@
         </tbody></table>` : '<p class="muted">No payments recorded yet.</p>'}</div>`;
   }
 
+  // People to offer when assigning: those coming to the job's event first, then everyone else.
+  function assignOptions(t) {
+    const taken = new Set(t.claims.map((c) => c.personId));
+    const pool = S.people.filter((p) => !taken.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+    const going = t.eventId === 'all' ? pool : pool.filter((p) => p.rsvps[t.eventId]);
+    const others = pool.filter((p) => !going.includes(p));
+    const o = (p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`;
+    return going.map(o).join('') + (others.length ? `<optgroup label="Not RSVP'd to this event">${others.map(o).join('')}</optgroup>` : '');
+  }
+
   function taskRow(t) {
     const opt = (v, cur) => `<option value="${v}" ${Number(cur) === v ? 'selected' : ''}>${v}</option>`;
     return `
@@ -553,12 +614,15 @@
             <select name="points" aria-label="Points">${[1, 2, 3, 4, 5, 6, 7, 8].map((v) => opt(v, t.points)).join('')}</select>
           </div>
           <label class="small">People needed <input name="slots" type="number" min="1" max="20" value="${t.slots}"></label>
+          <label class="check small"><input type="checkbox" name="assignOnly" ${t.assignOnly ? 'checked' : ''}> Organiser assigns (people can't claim it themselves)</label>
           <div class="row wrap-row">
             <button class="btn primary sm" type="submit">${t.pending ? 'Approve and save' : 'Save'}</button>
             <button class="btn danger sm" type="button" data-act="delTask" data-id="${esc(t.id)}">Delete job</button>
           </div>
-          ${t.claims.length ? `<div class="small"><b>Claimed by</b> (untick if it didn't get done)</div>
-            ${t.claims.map((c) => { const p = person(c.personId); return `<label class="check"><input type="checkbox" data-act="notDone" data-tid="${esc(t.id)}" data-pid="${esc(c.personId)}" ${c.notDone ? '' : 'checked'}> ${esc(p ? p.name : '?')} did it</label>`; }).join(' ')}` : ''}
+          ${t.claims.length ? `<div class="small"><b>Doing it</b> (untick if it didn't get done)</div>
+            ${t.claims.map((c) => { const p = person(c.personId); return `<div class="row"><label class="check spacer"><input type="checkbox" data-act="notDone" data-tid="${esc(t.id)}" data-pid="${esc(c.personId)}" ${c.notDone ? '' : 'checked'}> ${esc(p ? p.name : '?')} did it${c.assigned ? ' <span class="muted small">(assigned)</span>' : ''}</label><button class="btn sm ghost danger" type="button" data-act="unassign" data-tid="${esc(t.id)}" data-pid="${esc(c.personId)}">Remove</button></div>`; }).join('')}` : ''}
+          ${t.claims.length < t.slots ? `<div class="row"><select class="spacer" id="as-${esc(t.id)}" aria-label="Person to assign"><option value="">Assign someone…</option>${assignOptions(t)}</select>
+            <button class="btn sm" type="button" data-act="assign" data-id="${esc(t.id)}">Assign</button></div>` : ''}
         </form>
       </details>`;
   }
@@ -632,6 +696,7 @@
             <select name="points" aria-label="Points">${[1, 2, 3, 5, 8].map((v) => `<option value="${v}" ${v === 2 ? 'selected' : ''}>${v} pts</option>`).join('')}</select>
           </div>
           <label class="small">People needed <input name="slots" type="number" min="1" max="20" value="1"></label>
+          <label class="check small"><input type="checkbox" name="assignOnly"> Organiser assigns (e.g. serving behind the bar)</label>
           <button class="btn primary full" type="submit">Add job</button>
         </form>
       </details>
@@ -668,7 +733,7 @@
     } else if (kind === 'about') {
       act({ action: 'updatePerson', personId: me, person: { name: fd.get('name'), sponsor: fd.get('sponsor'), firstTimer: fd.get('firstTimer') === 'on' } }, 'Saved');
     } else if (kind === 'addTask') {
-      const r = await act({ action: 'addTask', eventId: fd.get('eventId'), title: fd.get('title'), phase: fd.get('phase'), slots: fd.get('slots'), points: fd.get('points'), addedBy: person(me)?.name }, 'Job added');
+      const r = await act({ action: 'addTask', eventId: fd.get('eventId'), title: fd.get('title'), phase: fd.get('phase'), slots: fd.get('slots'), points: fd.get('points'), assignOnly: fd.get('assignOnly') === 'on', addedBy: person(me)?.name }, 'Job added');
       if (r && tab === 'jobs') { phase = fd.get('phase'); ls.set('phase', phase); render(); }
     } else if (kind === 'pay') {
       act({ action: 'reportPayment', personId: me, amount: fd.get('amount'), kind: fd.get('kind'), note: fd.get('note') }, 'Recorded. The treasurer will confirm it.');
@@ -692,7 +757,7 @@
       for (const [k, v] of fd.entries()) if (k.startsWith('meal:')) mealCosts[k.slice(5)] = v;
       act({ action: 'updatePaymentInfo', details: fd.get('details'), mealCosts }, 'Payment info saved');
     } else if (kind === 'editTask') {
-      const body = { action: 'editTask', taskId: f.dataset.id, title: fd.get('title'), phase: fd.get('phase'), points: fd.get('points'), slots: fd.get('slots'), pending: false };
+      const body = { action: 'editTask', taskId: f.dataset.id, title: fd.get('title'), phase: fd.get('phase'), points: fd.get('points'), slots: fd.get('slots'), assignOnly: fd.get('assignOnly') === 'on', pending: false };
       if (fd.get('eventId')) body.eventId = fd.get('eventId');
       act(body, 'Job saved');
     } else if (kind === 'event') {
@@ -700,6 +765,9 @@
     } else if (kind === 'addEvent') {
       const r = await act({ action: 'addEvent', event: { name: fd.get('name'), dates: fd.get('dates'), code: fd.get('code') }, copyFrom: fd.get('copyFrom') || undefined }, 'Event created');
       if (r?.eventId) { filter = r.eventId; ls.set('filter', filter); render(); }
+    } else if (kind === 'addItem') {
+      const r = await act({ action: 'addItem', eventId: fd.get('eventId'), name: fd.get('name'), qty: fd.get('qty'), note: fd.get('note'), personId: me, addedBy: person(me)?.name }, 'Added to the list');
+      if (r) { const i = app.querySelector('#si-n'); if (i) i.focus(); }
     } else if (kind === 'settings') {
       act({ action: 'updateSettings', dollarsPerPoint: fd.get('dollarsPerPoint') }, 'Saved');
     }
@@ -729,6 +797,16 @@
     if (a === 'resetEvent') { if (confirmTwice(b, 'Tap again: clears RSVPs and claims')) act({ action: 'resetEvent', eventId: b.dataset.ev }, 'Event cleared'); return; }
     if (a === 'deleteEvent') { if (confirmTwice(b, 'Tap again: deletes event and its jobs')) act({ action: 'deleteEvent', eventId: b.dataset.ev }, 'Event deleted'); return; }
     if (a === 'csv') { downloadCsv(); return; }
+    if (a === 'assign') {
+      const pid = app.querySelector('#as-' + CSS.escape(b.dataset.id))?.value;
+      if (!pid) { toast('Pick someone first', true); return; }
+      act({ action: 'assign', taskId: b.dataset.id, personId: pid }, 'Assigned'); return;
+    }
+    if (a === 'unassign') { if (confirmTwice(b, 'Tap again')) act({ action: 'unclaim', taskId: b.dataset.tid, personId: b.dataset.pid }, 'Removed'); return; }
+    if (a === 'grab') { act({ action: 'claimItem', itemId: b.dataset.id, personId: me }, "Thanks! It's yours"); return; }
+    if (a === 'ungrab') { act({ action: 'unclaimItem', itemId: b.dataset.id, personId: me }, 'Dropped'); return; }
+    if (a === 'got') { act({ action: 'setItemGot', itemId: b.dataset.id, personId: me, got: b.dataset.v === '1' }, b.dataset.v === '1' ? 'Ticked off' : 'Updated'); return; }
+    if (a === 'delItem') { if (confirmTwice(b, 'Tap again')) act({ action: 'deleteItem', itemId: b.dataset.id, personId: me }, 'Removed'); return; }
     if (a === 'updSend') { window.open('https://wa.me/?text=' + encodeURIComponent(app.querySelector('#upd-text').value), '_blank', 'noopener'); return; }
     if (a === 'updCopy') {
       const v = app.querySelector('#upd-text').value;

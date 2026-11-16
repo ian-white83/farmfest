@@ -26,7 +26,11 @@ Each overnight adult needs 3 points, and each day-visit adult needs 2. A missing
   - a job form where they pick one event or All events
 - `EVENT_CODE` only sets the code for the first event. After that, codes are managed in the app.
 
-## Deploy (about 10 minutes, free)
+## Shopping list and assigned jobs
+
+- **Shopping tab:** anyone can add an item (name, how many, note) for one event or all of them. Someone taps **I'll grab it** so nobody doubles up, then **Got it ✓** once it's bought. Items don't earn points; receipts go under Chip in as "Meal or other costs". Organisers can remove any item, and the person who added an item can remove it until someone claims it.
+- **Organiser-assigned jobs:** in Organise, tick **Organiser assigns** on a job, for example "Bar host". People then see "🔒 An organiser assigns this one" instead of a claim button. Organisers pick someone from the **Assign someone…** list, which shows people coming to that event first, and can remove them again. Assigned jobs earn points like any other.
+ (about 10 minutes, free)
 
 1. Put this folder in a GitHub repository.
 2. On [Netlify](https://app.netlify.com), click **Add new site → Import an existing project → GitHub** and pick the repository. Leave the build settings as they are, because `netlify.toml` already sets them.
