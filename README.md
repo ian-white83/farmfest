@@ -13,6 +13,19 @@ A one-page, phone-first site for Farm Fest. People RSVP, claim jobs that earn po
 
 Each overnight adult needs 3 points, and each day-visit adult needs 2. A missing point costs $20. Hosts need nothing. Organisers can change all of these in the app.
 
+## Running several events at once
+
+- **Each event has its own code.** People only see the events whose code they've entered. They add more with **+ Event code** at the top of any tab, or by opening a `?code=` link.
+- **Filtering:** a row of chips (All events, or one event) filters Jobs, Coming and Chip in.
+- **Event scope for jobs:** every job belongs to one event or to **All events**. Shared jobs show up under every event, and their points count once.
+- **Points:** these are pooled per person. Someone coming to two events needs the total of both events' requirements, and every job they claim counts toward that total.
+- **Organisers** see every event without needing the event codes. They get:
+  - an **All events at a glance** table (people, job slots filled, who's short)
+  - an event editor (name, dates, code, WhatsApp link, points rules, clear or delete)
+  - **+ Add an event**, which starts from the standard job list, a copy of another event's jobs, or no jobs
+  - a job form where they pick one event or All events
+- `EVENT_CODE` only sets the code for the first event. After that, codes are managed in the app.
+
 ## Deploy (about 10 minutes, free)
 
 1. Put this folder in a GitHub repository.

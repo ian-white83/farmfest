@@ -178,3 +178,18 @@ details.box summary { font-weight: 600; cursor: pointer; }
 table.mini { width: 100%; border-collapse: collapse; font-size: .9rem; }
 table.mini td, table.mini th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .hidden { display: none !important; }
+
+/* Event filter chips */
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 4px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px;
+  padding: 8px 14px; font-weight: 600; font-size: .9rem; cursor: pointer; min-height: 38px; white-space: nowrap;
+}
+.chip[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.chip.add { border-style: dashed; color: var(--muted); }
+.badge.all { background: #e7f1fb; color: #1d5a96; }
+.badge.ev { background: var(--chip); color: var(--ink); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge.all { background: #1b2f45; color: #9cc8f2; } }
+:root[data-theme="dark"] .badge.all { background: #1b2f45; color: #9cc8f2; }
+.evsec + .evsec { margin-top: 28px; padding-top: 4px; border-top: 1px dashed var(--line); }

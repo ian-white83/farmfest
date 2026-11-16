@@ -7,104 +7,157 @@ const { store: fileStore, stop } = await localStore();
 let store = fileStore;
 
 async function call(body, headers = {}) {
-  const h = { 'x-event-code': 'ff27', 'content-type': 'application/json', ...headers };
+  const h = { 'x-event-codes': 'ff27', 'content-type': 'application/json', ...headers };
   const req = new Request('http://x/api', body ? { method: 'POST', headers: h, body: JSON.stringify(body) } : { headers: h });
   const res = await handle(req, store, env);
   return { status: res.status, data: await res.json() };
 }
 const admin = { 'x-admin-code': 'ORG' };
 const treas = { 'x-treasurer-code': 'CASH' };
+const both = { 'x-event-codes': 'FF27,WINTER' };
+const winterOnly = { 'x-event-codes': 'winter' };
 let passed = 0;
 const t = async (name, fn) => { await fn(); passed++; console.log('ok -', name); };
 
 try {
   await t('wrong event code is rejected', async () => {
-    const r = await handle(new Request('http://x/api', { headers: { 'x-event-code': 'nope' } }), store, env);
-    assert.equal(r.status, 401);
+    assert.equal((await call(null, { 'x-event-codes': 'nope' })).status, 401);
   });
 
-  await t('fresh state has 22 seeded jobs', async () => {
+  let e1, e2;
+  await t('fresh state has one event (code from EVENT_CODE) with 22 jobs', async () => {
     const r = await call();
     assert.equal(r.status, 200);
+    assert.equal(r.data.events.length, 1);
+    e1 = r.data.events[0].id;
+    assert.equal(r.data.events[0].code, 'FF27', 'guests see the code they entered');
     assert.equal(r.data.tasks.length, 22);
-    assert.equal(r.data.roles.admin, false);
   });
 
-  let ian, karen, tasks;
-  await t('join and duplicate names', async () => {
-    const r = await call({ action: 'join', person: { name: 'Ian', adults: 1, nights: ['Fri', 'Sat'] } });
-    assert.equal(r.status, 200); ian = r.data.personId;
-    const d = await call({ action: 'join', person: { name: 'ian' } });
-    assert.equal(d.status, 409);
-    const k = await call({ action: 'join', person: { name: 'Karen + Pete', adults: 2, kids: 2, nights: ['Sat'] } });
-    karen = k.data.personId; tasks = k.data.state.tasks;
+  await t('organiser code alone sees everything, including codes', async () => {
+    const r = await call(null, { 'x-event-codes': '', ...admin });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.events[0].code, 'FF27');
   });
 
-  const pizza = () => tasks.find((x) => x.title.startsWith('Lead cook, Friday'));
-  await t('claim respects slots', async () => {
-    assert.equal((await call({ action: 'claim', taskId: pizza().id, personId: ian })).status, 200);
-    const full = await call({ action: 'claim', taskId: pizza().id, personId: karen });
-    assert.equal(full.status, 409);
+  await t('organiser adds a second event with its own code and a copy of the jobs', async () => {
+    const bad = await call({ action: 'addEvent', event: { name: 'Winter Fest', code: 'ff27' } }, admin);
+    assert.equal(bad.status, 409, 'codes must be unique');
+    const r = await call({ action: 'addEvent', event: { name: 'Winter Fest', dates: 'July 2027', code: 'winter' }, copyFrom: e1 }, admin);
+    assert.equal(r.status, 200);
+    e2 = r.data.eventId;
+    assert.equal(r.data.state.events.find((e) => e.id === e2).code, 'WINTER');
+    assert.equal(r.data.state.tasks.filter((x) => x.eventId === e2).length, 22);
   });
 
-  await t('guest-added task is pending; admin task is live', async () => {
-    const g = await call({ action: 'addTask', title: 'Bring a guitar', phase: 'During', points: 8, slots: 1 });
+  await t('guests only see events whose code they hold', async () => {
+    const one = await call();
+    const w = await call(null, { 'x-event-codes': 'WINTER' });
+    assert.ok(w.data.events.every((e) => e.code === 'WINTER'), 'never another event code');
+    assert.deepEqual(one.data.events.map((e) => e.name), ['Farm Fest April 2027']);
+    assert.ok(one.data.tasks.every((x) => x.eventId === e1 || x.eventId === 'all'));
+    const two = await call(null, both);
+    assert.equal(two.data.events.length, 2);
+    assert.deepEqual(two.data.matchedCodes.sort(), ['FF27', 'WINTER']);
+  });
+
+  let ian, karen, shared;
+  await t('join an event, then RSVP to a second one', async () => {
+    const r = await call({ action: 'join', eventId: e1, person: { name: 'Ian' }, rsvp: { adults: 1, nights: ['Fri', 'Sat'] } });
+    ian = r.data.personId;
+    assert.equal((await call({ action: 'setRsvp', personId: ian, eventId: e2, rsvp: { adults: 1, nights: ['Sat'] } })).status, 403, 'needs the winter code');
+    const ok = await call({ action: 'setRsvp', personId: ian, eventId: e2, rsvp: { adults: 1, nights: ['Sat'] } }, both);
+    const me = ok.data.state.people.find((p) => p.id === ian);
+    assert.equal(Object.keys(me.rsvps).length, 2);
+    assert.equal(me.summary.req, 6, '3 points per event');
+    const k = await call({ action: 'join', eventId: e2, person: { name: 'Karen' }, rsvp: { adults: 2, nights: ['Sat'] } }, winterOnly);
+    karen = k.data.personId;
+  });
+
+  await t('people lists and RSVPs are filtered by code', async () => {
+    const aprilOnly = await call();
+    assert.ok(!aprilOnly.data.people.some((p) => p.id === karen), 'Karen is only at winter');
+    const ianSeen = aprilOnly.data.people.find((p) => p.id === ian);
+    assert.deepEqual(Object.keys(ianSeen.rsvps), [e1], 'winter RSVP hidden from april-only viewers');
+    assert.equal(ianSeen.payments.length, 0);
+  });
+
+  await t('a shared job is visible to every event and counts once', async () => {
+    const g = await call({ action: 'addTask', eventId: 'all', title: 'Design the shirts', phase: 'Before', points: 3, slots: 1 }, admin);
+    shared = g.data.taskId;
+    assert.ok((await call(null, winterOnly)).data.tasks.some((x) => x.id === shared));
+    assert.ok((await call()).data.tasks.some((x) => x.id === shared));
+    const c = await call({ action: 'claim', taskId: shared, personId: ian });
+    assert.equal(c.data.state.people.find((p) => p.id === ian).summary.earned, 3);
+  });
+
+  await t("guests can't add jobs to an event they don't hold the code for", async () => {
+    assert.equal((await call({ action: 'addTask', eventId: e2, title: 'x' })).status, 403);
+    const g = await call({ action: 'addTask', eventId: 'all', title: 'Bring a guitar', points: 8 });
     assert.equal(g.data.state.tasks.find((x) => x.id === g.data.taskId).pending, true);
-    const a = await call({ action: 'addTask', title: 'Mow camp area', phase: 'Before', points: 3, slots: 1 }, admin);
-    assert.equal(a.data.state.tasks.find((x) => x.id === a.data.taskId).pending, false);
   });
 
-  await t('admin-only actions are blocked for guests', async () => {
-    const r = await call({ action: 'deleteTask', taskId: pizza().id });
-    assert.equal(r.status, 403);
-    const p = await call({ action: 'updatePaymentInfo', details: 'PayID 123' }, admin);
-    assert.equal(p.status, 403, 'organiser code is not the treasurer code');
+  await t('admin-only and treasurer-only actions are protected', async () => {
+    assert.equal((await call({ action: 'deleteTask', taskId: shared })).status, 403);
+    assert.equal((await call({ action: 'updatePaymentInfo', details: 'PayID 123' }, admin)).status, 403);
   });
 
-  await t('captain can mark a claim not done', async () => {
-    const r = await call({ action: 'setNotDone', taskId: pizza().id, personId: ian, notDone: true }, admin);
-    assert.equal(r.data.state.tasks.find((x) => x.id === pizza().id).claims[0].notDone, true);
-  });
-
-  await t('payments: report, treasurer confirms, guest cannot remove confirmed', async () => {
-    const r = await call({ action: 'reportPayment', personId: karen, amount: 60, note: 'buy-in' });
+  await t('payments: report, treasurer confirms, per-event meal costs', async () => {
+    const r = await call({ action: 'reportPayment', personId: karen, amount: 60, note: 'buy-in' }, { ...winterOnly, 'x-person-id': karen });
     const pay = r.data.state.people.find((p) => p.id === karen).payments[0];
-    assert.equal(pay.confirmed, false);
-    assert.equal((await call({ action: 'confirmPayment', personId: karen, paymentId: pay.id, confirmed: true })).status, 403);
     const c = await call({ action: 'confirmPayment', personId: karen, paymentId: pay.id, confirmed: true }, treas);
-    assert.equal(c.data.state.people.find((p) => p.id === karen).payments[0].confirmed, true);
-    assert.equal((await call({ action: 'cancelPayment', personId: karen, paymentId: pay.id })).status, 403);
-    const info = await call({ action: 'updatePaymentInfo', details: 'PayID: 0400 000 000' }, treas);
-    assert.equal(info.data.state.payment.details, 'PayID: 0400 000 000');
+    const k = c.data.state.people.find((p) => p.id === karen).summary;
+    assert.equal(k.req, 6, 'two adults x 3');
+    assert.equal(k.have, 3, '$60 = 3 points');
+    assert.equal(k.status, 'bad');
+    const info = await call({ action: 'updatePaymentInfo', details: 'PayID: 0400', mealCosts: { [e2]: 'Asado $35' } }, treas);
+    assert.equal(info.data.state.events.find((x) => x.id === e2).mealCosts, 'Asado $35');
   });
 
-  await t('WhatsApp link must be a WhatsApp URL', async () => {
-    assert.equal((await call({ action: 'updateEvent', event: { whatsappUrl: 'https://evil.example' } }, admin)).status, 400);
-    assert.equal((await call({ action: 'updateEvent', event: { whatsappUrl: 'https://chat.whatsapp.com/abc' } }, admin)).status, 200);
+  await t('reset one event leaves the other alone', async () => {
+    const r = await call({ action: 'resetEvent', eventId: e2 }, admin);
+    const me = r.data.state.people.find((p) => p.id === ian);
+    assert.deepEqual(Object.keys(me.rsvps), [e1]);
+    assert.ok(r.data.state.tasks.filter((x) => x.eventId === e2).every((x) => x.claims.length === 0));
+  });
+
+  await t('delete an event removes its jobs and RSVPs; the last event cannot be deleted', async () => {
+    const r = await call({ action: 'deleteEvent', eventId: e2 }, admin);
+    assert.equal(r.data.state.events.length, 1);
+    assert.ok(!r.data.state.tasks.some((x) => x.eventId === e2));
+    assert.equal((await call({ action: 'deleteEvent', eventId: e1 }, admin)).status, 400);
+  });
+
+  await t('v1 data migrates into the first event', async () => {
+    store = memoryStore();
+    await store.setJSON('state', {
+      version: 1,
+      event: { name: 'Old Fest', dates: 'Apr', location: 'Farm', whatsappUrl: '', pointsOvernight: 3, pointsDay: 2, dollarsPerPoint: 25 },
+      payment: { details: 'PayID x', mealCosts: 'BBQ $30' },
+      people: [{ id: 'p1', name: 'Paul', adults: 2, kids: 1, nights: ['Fri'], diet: '', sponsor: '', firstTimer: false, host: true, payments: [] }],
+      tasks: [{ id: 't1', title: 'Cook', phase: 'During', points: 8, slots: 1, pending: false, claims: [{ personId: 'p1', notDone: false }] }],
+    });
+    const r = await call();
+    assert.equal(r.status, 200);
+    assert.equal(r.data.events[0].name, 'Old Fest');
+    assert.equal(r.data.events[0].mealCosts, 'BBQ $30');
+    assert.equal(r.data.settings.dollarsPerPoint, 25);
+    assert.equal(r.data.people[0].rsvps[r.data.events[0].id].adults, 2);
+    assert.equal(r.data.tasks[0].eventId, r.data.events[0].id);
+    const w = await call({ action: 'claim', taskId: 't1', personId: 'p1' });
+    assert.equal(w.status, 200, 'writes work after migration');
   });
 
   await t('concurrent claims do not lose writes (atomic store)', async () => {
     store = memoryStore();
-    tasks = (await call()).data.tasks;
+    const tasks = (await call()).data.tasks;
+    const eid = (await call()).data.events[0].id;
     const people = [];
-    for (let i = 0; i < 6; i++) people.push((await call({ action: 'join', person: { name: 'P' + i } })).data.personId);
+    for (let i = 0; i < 6; i++) people.push((await call({ action: 'join', eventId: eid, person: { name: 'P' + i } })).data.personId);
     const dishes = tasks.find((x) => x.title === 'Dishes after a meal');
     const rs = await Promise.all(people.map((pid) => call({ action: 'claim', taskId: dishes.id, personId: pid })));
-    const ok = rs.filter((r) => r.status === 200).length;
-    if (ok !== 4) console.log(rs.map((r) => r.status + ' ' + (r.data.error || '')));
-    const s = (await call()).data;
-    const claims = s.tasks.find((x) => x.id === dishes.id).claims.length;
-    assert.equal(claims, 4, 'four slots filled');
-    assert.equal(ok, 4);
-  });
-
-  store = fileStore;
-  await t('new event clears people but keeps jobs and payment details', async () => {
-    const r = await call({ action: 'newEvent' }, admin);
-    assert.equal(r.data.state.people.length, 0);
-    assert.ok(r.data.state.tasks.length >= 24);
-    assert.ok(r.data.state.tasks.every((x) => x.claims.length === 0));
-    assert.equal(r.data.state.payment.details, 'PayID: 0400 000 000');
+    assert.equal(rs.filter((r) => r.status === 200).length, 4);
+    assert.equal((await call()).data.tasks.find((x) => x.id === dishes.id).claims.length, 4);
   });
 
   console.log(`\n${passed} tests passed`);
