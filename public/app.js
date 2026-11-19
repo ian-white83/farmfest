@@ -333,19 +333,22 @@
     const scoped = S.tasks.filter(taskInScope);
     const tasks = scoped.filter((t) => t.phase === phase).sort((a, b) => b.points - a.points || a.title.localeCompare(b.title));
     const counts = Object.fromEntries(['Before', 'During', 'After'].map((ph) => [ph, scoped.filter((t) => t.phase === ph && t.claims.length < t.slots).length]));
-    const defEv = filter !== 'all' ? filter : multi() ? 'all' : S.events[0].id;
-    return `
-      <div class="seg" role="group" aria-label="When">
-        ${['Before', 'During', 'After'].map((ph) => `<button data-act="phase" data-ph="${ph}" aria-pressed="${phase === ph}">${ph} <span class="muted small">(${counts[ph]})</span></button>`).join('')}
-      </div>
-      <p class="small muted">Big jobs earn big points: cooking a dinner is worth 8, a rubbish run 2. Most events need 3 points per adult staying over.</p>
-      ${tasks.length ? (phase === 'During' ? duringGroups(tasks) : tasks.map(taskCard).join('')) : `<p class="muted">No jobs here yet.</p>`}
+    // Which events this person may add jobs to: organisers always; attendees only where the event allows it.
+    const addable = S.roles.admin ? S.events : S.events.filter((e) => e.guestTasks !== false);
+    const canAll = addable.length === S.events.length;
+    const inScope = addable.filter((e) => filter === 'all' || e.id === filter);
+    const defEv = filter !== 'all' && inScope.length ? filter : multi() && canAll ? 'all' : (inScope[0] || addable[0])?.id;
+    const evOpts = (canAll && multi() ? [['all', 'All events']] : []).concat(addable.map((e) => [e.id, e.name]))
+      .map(([id, n]) => `<option value="${esc(id)}" ${id === defEv ? 'selected' : ''}>${esc(n)}</option>`).join('');
+    const addForm = !inScope.length
+      ? `<p class="small muted" style="margin-top:16px">Organisers add the jobs for ${filter === 'all' && multi() ? 'these events' : 'this event'}. If something's missing, ask one of them.</p>`
+      : `
       <details class="box" style="margin-top:16px">
         <summary>+ Add a job</summary>
         <form class="stack" data-form="addTask" style="margin-top:12px">
           <div class="field"><label for="t-title">What needs doing?</label><input id="t-title" name="title" type="text" maxlength="120" required></div>
-          ${multi() ? `<div class="field"><label for="t-ev">For which event?</label><select id="t-ev" name="eventId">${eventOptions(defEv)}</select></div>`
-                    : `<input type="hidden" name="eventId" value="${esc(S.events[0].id)}">`}
+          ${multi() && addable.length + (canAll ? 1 : 0) > 1 ? `<div class="field"><label for="t-ev">For which event?</label><select id="t-ev" name="eventId">${evOpts}</select></div>`
+                    : `<input type="hidden" name="eventId" value="${esc(defEv)}">`}
           <div class="grid2">
             <div><label for="t-ph">When</label><select id="t-ph" name="phase">${['Before', 'During', 'After'].map((x) => `<option ${x === phase ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
             <div><label for="t-sl">People needed</label><input id="t-sl" name="slots" type="number" min="1" max="20" value="1" inputmode="numeric"></div>
@@ -360,6 +363,13 @@
           <button class="btn primary full" type="submit">Add job</button>
         </form>
       </details>`;
+    return `
+      <div class="seg" role="group" aria-label="When">
+        ${['Before', 'During', 'After'].map((ph) => `<button data-act="phase" data-ph="${ph}" aria-pressed="${phase === ph}">${ph} <span class="muted small">(${counts[ph]})</span></button>`).join('')}
+      </div>
+      <p class="small muted">Big jobs earn big points: cooking a dinner is worth 8, a rubbish run 2. Most events need 3 points per adult staying over.</p>
+      ${tasks.length ? (phase === 'During' ? duringGroups(tasks) : tasks.map(taskCard).join('')) : `<p class="muted">No jobs here yet.</p>`}
+      ${addForm}`;
   }
 
   // "During" jobs grouped by day (then time of day), with undated jobs last.
@@ -774,6 +784,8 @@
             <div><label>Points per adult (day visit)</label><input name="pointsDay" type="number" min="0" max="20" value="${e.pointsDay}"></div>
           </div>
           <div class="field"><label>Points per adult for first-timers</label><input name="pointsFirstTimer" type="number" min="0" max="20" value="${e.pointsFirstTimer ?? e.pointsOvernight}"></div>
+          <input type="hidden" name="guestTasks" value="off">
+          <label class="check small"><input type="checkbox" name="guestTasks" ${e.guestTasks !== false ? 'checked' : ''}> Attendees can add jobs (untick so only organisers can)</label>
           <button class="btn primary full" type="submit">Save event</button>
           <p class="small muted">Changing the code locks out anyone using the old one until they enter the new one.</p>
           <div class="grid2">

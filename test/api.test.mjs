@@ -169,6 +169,19 @@ try {
     await call({ action: 'deleteTask', taskId: off.data.taskId }, admin);
   });
 
+  await t('an event can stop attendees adding jobs', async () => {
+    assert.equal((await call()).data.events.find((x) => x.id === e1).guestTasks, true, 'on by default');
+    await call({ action: 'updateEvent', eventId: e1, event: { guestTasks: 'off' } }, admin);
+    assert.equal((await call({ action: 'addTask', eventId: e1, title: 'Nope' })).status, 403);
+    assert.equal((await call({ action: 'addTask', eventId: 'all', title: 'Nope' })).status, 403, 'shared jobs blocked too');
+    assert.equal((await call({ action: 'addTask', eventId: e2, title: 'Winter is fine' }, winterOnly)).status, 200, 'other events unaffected');
+    const o = await call({ action: 'addTask', eventId: e1, title: 'Organisers still can' }, admin);
+    assert.equal(o.status, 200);
+    await call({ action: 'deleteTask', taskId: o.data.taskId }, admin);
+    await call({ action: 'updateEvent', eventId: e1, event: { guestTasks: 'on' } }, admin);
+    assert.equal((await call()).data.events.find((x) => x.id === e1).guestTasks, true);
+  });
+
   await t('shopping list: add, claim, tick off, scoped by event', async () => {
     const a1 = await call({ action: 'addItem', eventId: e1, name: 'Tonic water', qty: '12 bottles', personId: ian });
     const item = a1.data.itemId;

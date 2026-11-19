@@ -76,3 +76,7 @@ npm run dev     # http://localhost:8888, codes FF27 / ORG / CASH
 ## Leaderboard and The Shit List
 
 The Event tab shows a podium with gold, silver and bronze for the top three scores (job points plus buy-in money converted to points). People tied on a score share a medal. Below it, "The Shit List" shows 💩 next to whoever is tied for last, which is everyone on zero until they grab a job or chip in. Hosts are left out of both.
+
+## Who can add jobs
+
+Each event has an **Attendees can add jobs** box in Organise (ticked by default). Untick it and only organisers can add jobs to that event; attendees see a note to ask an organiser instead. A job shared by all events needs every event to allow it.
